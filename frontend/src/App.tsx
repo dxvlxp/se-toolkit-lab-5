@@ -1,5 +1,6 @@
-import { useState, useEffect, useReducer, FormEvent } from 'react'
+import { useState, useEffect, useReducer, FormEvent, useMemo } from 'react'
 import './App.css'
+import Dashboard, { type LabOption } from './Dashboard'
 
 const STORAGE_KEY = 'api_key'
 
@@ -9,6 +10,8 @@ interface Item {
   title: string
   created_at: string
 }
+
+type Page = 'items' | 'dashboard'
 
 type FetchState =
   | { status: 'idle' }
@@ -33,10 +36,11 @@ function fetchReducer(_state: FetchState, action: FetchAction): FetchState {
 }
 
 function App() {
-  const [token, setToken] = useState(
+  const [token, setToken] = useState<string>(
     () => localStorage.getItem(STORAGE_KEY) ?? '',
   )
-  const [draft, setDraft] = useState('')
+  const [draft, setDraft] = useState<string>('')
+  const [currentPage, setCurrentPage] = useState<Page>('items')
   const [fetchState, dispatch] = useReducer(fetchReducer, { status: 'idle' })
 
   useEffect(() => {
@@ -57,7 +61,7 @@ function App() {
       )
   }, [token])
 
-  function handleConnect(e: FormEvent) {
+  function handleConnect(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const trimmed = draft.trim()
     if (!trimmed) return
@@ -69,7 +73,19 @@ function App() {
     localStorage.removeItem(STORAGE_KEY)
     setToken('')
     setDraft('')
+    setCurrentPage('items')
   }
+
+  const labs: LabOption[] = useMemo(() => {
+    if (fetchState.status !== 'success') return []
+
+    return fetchState.items
+      .filter((item) => item.type === 'lab')
+      .map((item) => ({
+        id: item.title.toLowerCase().replace(/\s+/g, '-'),
+        label: item.title,
+      }))
+  }, [fetchState])
 
   if (!token) {
     return (
@@ -90,16 +106,35 @@ function App() {
   return (
     <div>
       <header className="app-header">
-        <h1>Items</h1>
-        <button className="btn-disconnect" onClick={handleDisconnect}>
-          Disconnect
-        </button>
+        <h1>{currentPage === 'items' ? 'Items' : 'Dashboard'}</h1>
+
+        <div
+          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+        >
+          <button
+            type="button"
+            onClick={() => setCurrentPage('items')}
+            disabled={currentPage === 'items'}
+          >
+            Items
+          </button>
+          <button
+            type="button"
+            onClick={() => setCurrentPage('dashboard')}
+            disabled={currentPage === 'dashboard'}
+          >
+            Dashboard
+          </button>
+          <button className="btn-disconnect" onClick={handleDisconnect}>
+            Disconnect
+          </button>
+        </div>
       </header>
 
       {fetchState.status === 'loading' && <p>Loading...</p>}
       {fetchState.status === 'error' && <p>Error: {fetchState.message}</p>}
 
-      {fetchState.status === 'success' && (
+      {currentPage === 'items' && fetchState.status === 'success' && (
         <table>
           <thead>
             <tr>
@@ -120,6 +155,10 @@ function App() {
             ))}
           </tbody>
         </table>
+      )}
+
+      {currentPage === 'dashboard' && fetchState.status === 'success' && (
+        <Dashboard labs={labs} initialLabId={labs[0]?.id} />
       )}
     </div>
   )
